@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,11 +68,19 @@ var listCmd = &cobra.Command{
 	Run:   listApps,
 }
 
+var uiCmd = &cobra.Command{
+	Use:   "ui",
+	Short: "Start the web UI for managing apps",
+	Long:  "Start a web interface to manage apps in apps.json (add, edit, delete, start, stop)",
+	Run:   startUI,
+}
+
 func init() {
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(uiCmd)
 }
 
 func main() {
@@ -198,12 +207,15 @@ func startApp(app *App) error {
 	logFileName := filepath.Join(logsDir, fmt.Sprintf("%s.log", app.Name))
 	app.LogFile = logFileName
 
-	// Create log file
+	// Clear/create fresh log file
 	file, err := os.Create(logFileName)
 	if err != nil {
 		return fmt.Errorf("failed to create log file: %w", err)
 	}
-	defer file.Close()
+
+	// Write startup header
+	fmt.Fprintf(file, "=== Started %s at %s ===\n", app.Name, time.Now().Format(time.RFC3339))
+	file.Close()
 
 	// Parse command
 	cmdParts := parseCommand(app.Command)
@@ -244,8 +256,13 @@ func startApp(app *App) error {
 
 	app.PID = execCmd.Process.Pid
 
-	// Log the start time
-	fmt.Fprintf(logFileWriter, "=== Started %s at %s (working dir: %s) ===\n", app.Name, time.Now().Format(time.RFC3339), execCmd.Dir)
+	// Log additional startup info
+	fmt.Fprintf(logFileWriter, "Command: %s\n", app.Command)
+	fmt.Fprintf(logFileWriter, "PID: %d\n", app.PID)
+	if execCmd.Dir != "" {
+		fmt.Fprintf(logFileWriter, "Working directory: %s\n", execCmd.Dir)
+	}
+	fmt.Fprintf(logFileWriter, "--- Application Output ---\n")
 	logFileWriter.Close()
 
 	return nil
@@ -305,6 +322,15 @@ func stopApps(cmd *cobra.Command, args []string) {
 
 		if !isProcessRunning(app.PID) {
 			fmt.Printf("App '%s' (PID: %d) is not running\n", app.Name, app.PID)
+
+			// Clear the log file when we detect the process has stopped
+			if app.LogFile != "" {
+				if file, err := os.Create(app.LogFile); err == nil {
+					fmt.Fprintf(file, "=== App '%s' stopped (process not found) at %s ===\n", app.Name, time.Now().Format(time.RFC3339))
+					file.Close()
+				}
+			}
+
 			app.PID = 0
 			continue
 		}
@@ -321,6 +347,15 @@ func stopApps(cmd *cobra.Command, args []string) {
 		}
 
 		fmt.Printf("Stopped app '%s' (PID: %d)\n", app.Name, app.PID)
+
+		// Clear the log file when stopping
+		if app.LogFile != "" {
+			if file, err := os.Create(app.LogFile); err == nil {
+				fmt.Fprintf(file, "=== App '%s' stopped at %s ===\n", app.Name, time.Now().Format(time.RFC3339))
+				file.Close()
+			}
+		}
+
 		app.PID = 0
 	}
 
@@ -368,4 +403,749 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// Web UI implementation
+func startUI(cmd *cobra.Command, args []string) {
+	port := 9090 // Default port for the UI
+
+	// Set up HTTP handlers
+	http.HandleFunc("/", serveHome)
+	http.HandleFunc("/api/apps", handleApps)
+	http.HandleFunc("/api/apps/start", handleStartApps)
+	http.HandleFunc("/api/apps/stop", handleStopApps)
+	http.HandleFunc("/api/apps/delete", handleDeleteApp)
+	http.HandleFunc("/api/apps/logs", handleAppLogs)
+
+	fmt.Printf("Starting Loopserve Web UI on http://localhost:%d\n", port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+}
+
+func serveHome(w http.ResponseWriter, r *http.Request) {
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loopserve</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: #fafafa;
+            color: #1f2937;
+            line-height: 1.5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+        
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 32px;
+            letter-spacing: -0.025em;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            color: #374151;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+        
+        button:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+        }
+        
+        .btn-primary {
+            background: #111827;
+            color: white;
+            border-color: #111827;
+        }
+        
+        .btn-primary:hover {
+            background: #1f2937;
+            border-color: #1f2937;
+        }
+        
+        .btn-success {
+            background: #059669;
+            color: white;
+            border-color: #059669;
+        }
+        
+        .btn-success:hover {
+            background: #047857;
+            border-color: #047857;
+        }
+        
+        .btn-open {
+            background: #059669;
+            color: white;
+            border-color: #059669;
+        }
+        
+        .btn-open:hover {
+            background: #047857;
+            border-color: #047857;
+        }
+        
+        .btn-relay {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+        
+        .btn-relay:hover {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+        }
+        
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+            border-color: #dc2626;
+        }
+        
+        .btn-danger:hover {
+            background: #b91c1c;
+            border-color: #b91c1c;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+            border-color: #6b7280;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+            border-color: #4b5563;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .form-section {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .form-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 16px;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: end;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .form-group.command {
+            flex: 2;
+        }
+        
+        label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        
+        input[type="text"], 
+        input[type="number"] {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            transition: border-color 0.15s ease;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #111827;
+            box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.1);
+        }
+        
+        .table-container {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            font-size: 13px;
+            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        td {
+            font-size: 14px;
+        }
+        
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+        
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .status-running {
+            color: #059669;
+            font-weight: 600;
+        }
+        
+        .status-stopped {
+            color: #6b7280;
+        }
+        
+        .actions-cell {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .actions-cell button,
+        .actions-cell a {
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .logs {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 24px;
+            border: 1px solid #374151;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: #6b7280;
+        }
+        
+        .empty-state h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #374151;
+        }
+        
+        .empty-state p {
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Loopserve</h1>
+        
+        <div class="actions">
+            <button class="btn-success" onclick="startAllApps()">Start All</button>
+            <button class="btn-secondary" onclick="stopAllApps()">Stop All</button>
+            <button onclick="loadApps()">Refresh</button>
+        </div>
+
+        <div class="form-section">
+            <h3>Add App</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="appName">Name</label>
+                    <input type="text" id="appName" placeholder="my-app" />
+                </div>
+                <div class="form-group">
+                    <label for="appPort">Port</label>
+                    <input type="number" id="appPort" placeholder="3000" min="1" max="65535" />
+                </div>
+                <div class="form-group command">
+                    <label for="appCommand">Command</label>
+                    <input type="text" id="appCommand" placeholder="./my-app" />
+                </div>
+                <button class="btn-primary" onclick="addApp()">Add</button>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="appsTable">
+                <thead>
+                    <tr>
+                        <th>App</th>
+                        <th>Port</th>
+                        <th>Status</th>
+                        <th>PID</th>
+                        <th>Command</th>
+                        <th>Relay</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="logs" class="logs" style="display:none;">
+            <div id="logsContent"></div>
+        </div>
+    </div>
+
+    <script>
+        let apps = [];
+        let currentlyViewingLogs = null; // Track which app's logs are currently shown
+        
+        async function loadApps() {
+            try {
+                const response = await fetch('/api/apps');
+                apps = await response.json();
+                renderApps();
+            } catch (error) {
+                console.error('Error loading apps:', error);
+                alert('Error loading apps: ' + error.message);
+            }
+        }
+        
+        function renderApps() {
+            const tbody = document.querySelector('#appsTable tbody');
+            
+            if (apps.length === 0) {
+                tbody.innerHTML = ` + "`" + `
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <h3>No apps configured</h3>
+                                <p>Add your first app using the form above</p>
+                            </div>
+                        </td>
+                    </tr>
+                ` + "`" + `;
+                return;
+            }
+            
+            tbody.innerHTML = '';
+            
+            apps.forEach(app => {
+                const row = document.createElement('tr');
+                const isRunning = app.pid && app.pid > 0;
+                const status = isRunning ? 'running' : 'stopped';
+                const statusClass = isRunning ? 'status-running' : 'status-stopped';
+                const pidDisplay = isRunning ? app.pid : '-';
+                
+                // Check if this app's logs are currently being viewed
+                const isViewingLogs = currentlyViewingLogs === app.name;
+                const logsButtonClass = isViewingLogs ? 'btn-primary' : 'btn-secondary';
+                const logsButtonText = isViewingLogs ? 'Hide Logs' : 'Logs';
+                
+                row.innerHTML = ` + "`" + `
+                    <td>${app.name}</td>
+                    <td>${app.port}</td>
+                    <td class="${statusClass}">${status}</td>
+                    <td>${pidDisplay}</td>
+                    <td title="${app.command}"><code>${truncate(app.command, 50)}</code></td>
+                    <td>-</td>
+                    <td>
+                        <div class="actions-cell">
+                            ${isRunning ? ` + "`<a href=\"http://localhost:${app.port}\" target=\"_blank\" class=\"btn-open\">Open</a>`" + ` : ''}
+                            ${app.log_file ? ` + "`<button class=\"${logsButtonClass}\" onclick=\"viewLogs('${app.name}')\">${logsButtonText}</button>`" + ` : ''}
+                            <button class="btn-relay" onclick="manageRelay('${app.name}')">Relay</button>
+                            <button class="btn-danger" onclick="deleteApp('${app.name}')">Delete</button>
+                        </div>
+                    </td>
+                ` + "`" + `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        function truncate(str, maxLen) {
+            return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+        }
+        
+        async function addApp() {
+            const name = document.getElementById('appName').value.trim();
+            const port = parseInt(document.getElementById('appPort').value);
+            const command = document.getElementById('appCommand').value.trim();
+            
+            if (!name || !port || !command) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            if (apps.find(app => app.name === name)) {
+                alert('App with this name already exists');
+                return;
+            }
+            
+            if (apps.find(app => app.port === port)) {
+                alert('Port is already in use');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/apps', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, port, command })
+                });
+                
+                if (response.ok) {
+                    document.getElementById('appName').value = '';
+                    document.getElementById('appPort').value = '';
+                    document.getElementById('appCommand').value = '';
+                    loadApps();
+                } else {
+                    const error = await response.text();
+                    alert('Error adding app: ' + error);
+                }
+            } catch (error) {
+                alert('Error adding app: ' + error.message);
+            }
+        }
+        
+        async function deleteApp(name) {
+            if (!confirm(` + "`Are you sure you want to delete '${name}'?`" + `)) return;
+            
+            try {
+                const response = await fetch('/api/apps/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                
+                if (response.ok) {
+                    loadApps();
+                } else {
+                    const error = await response.text();
+                    alert('Error deleting app: ' + error);
+                }
+            } catch (error) {
+                alert('Error deleting app: ' + error.message);
+            }
+        }
+        
+        async function startAllApps() {
+            try {
+                const response = await fetch('/api/apps/start', { method: 'POST' });
+                if (response.ok) {
+                    setTimeout(loadApps, 1000);
+                } else {
+                    const error = await response.text();
+                    alert('Error starting apps: ' + error);
+                }
+            } catch (error) {
+                alert('Error starting apps: ' + error.message);
+            }
+        }
+        
+        async function stopAllApps() {
+            try {
+                const response = await fetch('/api/apps/stop', { method: 'POST' });
+                if (response.ok) {
+                    setTimeout(loadApps, 1000);
+                } else {
+                    const error = await response.text();
+                    alert('Error stopping apps: ' + error);
+                }
+            } catch (error) {
+                alert('Error stopping apps: ' + error.message);
+            }
+        }
+        
+        async function viewLogs(appName) {
+            const logsElement = document.getElementById('logs');
+            
+            // If clicking the same app's logs button and logs are visible, hide them
+            if (currentlyViewingLogs === appName && logsElement.style.display === 'block') {
+                logsElement.style.display = 'none';
+                currentlyViewingLogs = null;
+                return;
+            }
+            
+            const app = apps.find(a => a.name === appName);
+            if (!app || !app.log_file) {
+                alert('No log file available for this app');
+                return;
+            }
+            
+            try {
+                const response = await fetch(` + "`/api/apps/logs?name=${encodeURIComponent(appName)}`" + `);
+                const logs = await response.text();
+                
+                document.getElementById('logsContent').textContent = logs;
+                logsElement.style.display = 'block';
+                logsElement.scrollTop = logsElement.scrollHeight;
+                currentlyViewingLogs = appName;
+            } catch (error) {
+                alert('Error loading logs: ' + error.message);
+            }
+        }
+        
+        function manageRelay(appName) {
+            // Placeholder function for relay management
+            alert('Relay management for ' + appName + ' - Coming soon!');
+        }
+        
+        // Load apps on page load
+        loadApps();
+        
+        // Auto-refresh every 5 seconds
+        setInterval(loadApps, 5000);
+    </script>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
+}
+
+func handleApps(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		config, err := loadAppsConfig()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Update status for each app
+		for i := range config.Apps {
+			app := &config.Apps[i]
+			if app.PID != 0 && !isProcessRunning(app.PID) {
+				// Clear the log file when we detect the process has stopped
+				if app.LogFile != "" {
+					if file, err := os.Create(app.LogFile); err == nil {
+						fmt.Fprintf(file, "=== App '%s' stopped (detected via status check) at %s ===\n", app.Name, time.Now().Format(time.RFC3339))
+						file.Close()
+					}
+				}
+				app.PID = 0 // Reset PID if process is not running
+			}
+		}
+
+		// Save the config to persist any PID changes
+		if err := saveAppsConfig(config); err != nil {
+			// Log error but don't fail the request
+			fmt.Printf("Warning: Failed to save config after status update: %v\n", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(config.Apps)
+
+	case "POST":
+		var newApp App
+		if err := json.NewDecoder(r.Body).Decode(&newApp); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		config, err := loadAppsConfig()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Validate
+		for _, app := range config.Apps {
+			if app.Name == newApp.Name {
+				http.Error(w, "App with this name already exists", http.StatusBadRequest)
+				return
+			}
+			if app.Port == newApp.Port {
+				http.Error(w, "Port already in use", http.StatusBadRequest)
+				return
+			}
+		}
+
+		config.Apps = append(config.Apps, newApp)
+
+		if err := saveAppsConfig(config); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func handleStartApps(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	startApps(nil, []string{})
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleStopApps(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	stopApps(nil, []string{})
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleDeleteApp(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	config, err := loadAppsConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Find and remove the app
+	newApps := []App{}
+	found := false
+	for _, app := range config.Apps {
+		if app.Name != req.Name {
+			newApps = append(newApps, app)
+		} else {
+			found = true
+			// Stop the app if it's running
+			if app.PID != 0 && isProcessRunning(app.PID) {
+				if process, err := os.FindProcess(app.PID); err == nil {
+					process.Signal(os.Interrupt)
+				}
+			}
+		}
+	}
+
+	if !found {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	config.Apps = newApps
+
+	if err := saveAppsConfig(config); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleAppLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	appName := r.URL.Query().Get("name")
+	if appName == "" {
+		http.Error(w, "App name is required", http.StatusBadRequest)
+		return
+	}
+
+	config, err := loadAppsConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Find the app
+	var app *App
+	for i := range config.Apps {
+		if config.Apps[i].Name == appName {
+			app = &config.Apps[i]
+			break
+		}
+	}
+
+	if app == nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	if app.LogFile == "" {
+		http.Error(w, "No log file available for this app", http.StatusNotFound)
+		return
+	}
+
+	// Read the log file
+	logContent, err := os.ReadFile(app.LogFile)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error reading log file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write(logContent)
 }

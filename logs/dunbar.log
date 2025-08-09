@@ -1,2 +1,6 @@
-=== Started dunbar at 2025-08-08T19:52:59-07:00 (working dir: /Users/max/Code/dunbar) ===
-2025/08/08 19:52:59 Server started at :8080
+=== Started dunbar at 2025-08-08T21:10:49-07:00 ===
+Command: /Users/max/Code/dunbar/dunbar
+PID: 51913
+Working directory: /Users/max/Code/dunbar
+--- Application Output ---
+2025/08/08 21:10:49 Server started at :8080
