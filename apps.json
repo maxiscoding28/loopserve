@@ -1,0 +1,11 @@
+{
+  "apps": [
+    {
+      "name": "dunbar",
+      "port": 8080,
+      "command": "/Users/max/Code/dunbar/dunbar",
+      "pid": 42221,
+      "log_file": "logs/dunbar.log"
+    }
+  ]
+}
