@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loopserve</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Loopserve</h1>
+        
+        <div class="actions">
+            <button class="btn-success" onclick="startAllApps()">Start All</button>
+            <button class="btn-secondary" onclick="stopAllApps()">Stop All</button>
+            <button onclick="loadApps()">Refresh</button>
+        </div>
+
+        <div class="form-section">
+            <h3>Add App</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="appName">Name</label>
+                    <input type="text" id="appName" placeholder="my-app" />
+                </div>
+                <div class="form-group">
+                    <label for="appPort">Port</label>
+                    <input type="number" id="appPort" placeholder="3000" min="1" max="65535" />
+                </div>
+                <div class="form-group command">
+                    <label for="appCommand">Command</label>
+                    <input type="text" id="appCommand" placeholder="./my-app" />
+                </div>
+                <button class="btn-primary" onclick="addApp()">Add</button>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="appsTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Port</th>
+                        <th>Command</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="appsList">
+                    <!-- Apps will be populated here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="logs" class="logs" style="display:none;">
+            <div id="logsContent"></div>
+        </div>
+
+        <!-- Flash message for notifications -->
+        <div id="flashMessage" class="flash-message">
+            <span id="flashText">Message here</span>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
