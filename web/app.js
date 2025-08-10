@@ -116,6 +116,9 @@ async function addApp() {
         return;
     }
     
+    const button = event.target;
+    setButtonLoading(button, true);
+    
     try {
         const response = await fetch('/api/apps', {
             method: 'POST',
@@ -135,11 +138,16 @@ async function addApp() {
         }
     } catch (error) {
         showFlash('error', 'Error adding app: ' + error.message);
+    } finally {
+        setButtonLoading(button, false);
     }
 }
 
 async function deleteApp(name) {
     if (!confirm(`Are you sure you want to delete '${name}'?`)) return;
+    
+    const button = event.target;
+    setButtonLoading(button, true);
     
     try {
         const response = await fetch('/api/apps/delete', {
@@ -157,10 +165,15 @@ async function deleteApp(name) {
         }
     } catch (error) {
         showFlash('error', 'Error deleting app: ' + error.message);
+    } finally {
+        setButtonLoading(button, false);
     }
 }
 
 async function startAllApps() {
+    const button = event.target;
+    setButtonLoading(button, true);
+    
     try {
         const response = await fetch('/api/apps/start', { method: 'POST' });
         if (response.ok) {
@@ -172,10 +185,15 @@ async function startAllApps() {
         }
     } catch (error) {
         showFlash('error', 'Error starting apps: ' + error.message);
+    } finally {
+        setButtonLoading(button, false);
     }
 }
 
 async function stopAllApps() {
+    const button = event.target;
+    setButtonLoading(button, true);
+    
     try {
         const response = await fetch('/api/apps/stop', { method: 'POST' });
         if (response.ok) {
@@ -187,6 +205,8 @@ async function stopAllApps() {
         }
     } catch (error) {
         showFlash('error', 'Error stopping apps: ' + error.message);
+    } finally {
+        setButtonLoading(button, false);
     }
 }
 
@@ -235,6 +255,9 @@ function manageRelay(appName) {
 }
 
 async function restartApp(appName) {
+    const button = event.target;
+    setButtonLoading(button, true);
+    
     try {
         // First stop the app
         const stopResponse = await fetch('/api/apps/stop', {
@@ -272,10 +295,15 @@ async function restartApp(appName) {
         }
     } catch (error) {
         showFlash('error', 'Error restarting app: ' + error.message);
+    } finally {
+        setButtonLoading(button, false);
     }
 }
 
 function startApp(appName) {
+    const button = event.target;
+    setButtonLoading(button, true);
+    
     fetch('/api/apps/start', {
         method: 'POST',
         headers: {
@@ -294,10 +322,16 @@ function startApp(appName) {
     })
     .catch(error => {
         showFlash('error', 'Error starting app: ' + error.message);
+    })
+    .finally(() => {
+        setButtonLoading(button, false);
     });
 }
 
 function stopApp(appName) {
+    const button = event.target;
+    setButtonLoading(button, true);
+    
     fetch('/api/apps/stop', {
         method: 'POST',
         headers: {
@@ -316,6 +350,9 @@ function stopApp(appName) {
     })
     .catch(error => {
         showFlash('error', 'Error stopping app: ' + error.message);
+    })
+    .finally(() => {
+        setButtonLoading(button, false);
     });
 }
 
@@ -324,3 +361,24 @@ loadApps();
 
 // Auto-refresh every 5 seconds
 setInterval(loadApps, 5000);
+
+// Helper function to set loading state on buttons
+function setButtonLoading(button, isLoading) {
+    if (!button) return;
+    
+    if (isLoading) {
+        button.classList.add('loading');
+        button.disabled = true;
+        // Store original text if not already stored
+        if (!button.dataset.originalText) {
+            button.dataset.originalText = button.textContent;
+        }
+    } else {
+        button.classList.remove('loading');
+        button.disabled = false;
+        // Restore original text if available
+        if (button.dataset.originalText) {
+            button.textContent = button.dataset.originalText;
+        }
+    }
+}

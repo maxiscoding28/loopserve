@@ -1,0 +1,5 @@
+- Improve logic so function doesn't return until app status has changed actually so there's no delay between loading button state and change in status
+- Add a Loopservice icon next to the title
+- If service is already running on that port clarify that message and just attach to it and start tracking
+- Implement uptime
+- Make the Port like this :8080, and make the PID and Port both monospaced like the command text

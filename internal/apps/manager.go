@@ -146,6 +146,11 @@ func StartApp(app *App) error {
 	cmd.Stderr = file
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	// Set working directory to the directory containing the command
+	if commandDir := filepath.Dir(app.Command); commandDir != "." {
+		cmd.Dir = commandDir
+	}
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start app: %w", err)
 	}

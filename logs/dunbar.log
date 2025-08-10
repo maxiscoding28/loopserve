@@ -4,3 +4,38 @@ PID: 22495
 Working directory: /Users/max/Code/dunbar
 --- Application Output ---
 2025/08/10 08:01:29 Server started at :8080
+[2025-08-10 08:24:43] Starting dunbar...
+[2025-08-10 08:24:43] Started with PID 28135
+2025/08/10 08:24:43 Server started at :8080
+[2025-08-10 08:33:03] Starting dunbar...
+[2025-08-10 08:33:03] Started with PID 30454
+2025/08/10 08:33:03 Server started at :8080
+[2025-08-10 08:33:47] Starting dunbar...
+[2025-08-10 08:33:47] Started with PID 30908
+2025/08/10 08:33:47 Server started at :8080
+[2025-08-10 08:34:04] Starting dunbar...
+[2025-08-10 08:34:04] Started with PID 30990
+2025/08/10 08:34:04 Server started at :8080
+[2025-08-10 08:38:10] Starting dunbar...
+[2025-08-10 08:38:10] Started with PID 31557
+2025/08/10 08:38:10 Server started at :8080
+[2025-08-10 08:42:51] Starting dunbar...
+[2025-08-10 08:42:51] Started with PID 32798
+2025/08/10 08:42:51 Server started at :8080
+[2025-08-10 08:52:28] Starting dunbar...
+[2025-08-10 08:52:28] Started with PID 34221
+2025/08/10 08:52:28 Server started at :8080
+2025/08/10 08:52:28 listen tcp :8080: bind: address already in use
+[2025-08-10 08:52:57] Starting dunbar...
+[2025-08-10 08:52:57] Started with PID 34439
+2025/08/10 08:52:57 Server started at :8080
+[2025-08-10 08:53:52] Starting dunbar...
+[2025-08-10 08:53:52] Started with PID 34661
+2025/08/10 08:53:52 Server started at :8080
+[2025-08-10 09:07:14] Starting dunbar...
+[2025-08-10 09:07:14] Started with PID 36957
+2025/08/10 09:07:14 Server started at :8080
+2025/08/10 09:07:14 listen tcp :8080: bind: address already in use
+[2025-08-10 09:58:19] Starting dunbar...
+[2025-08-10 09:58:19] Started with PID 44700
+2025/08/10 09:58:19 Server started at :8080
