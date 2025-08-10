@@ -2,4 +2,5 @@
 - Add a Loopservice icon next to the title
 - If service is already running on that port clarify that message and just attach to it and start tracking
 - Implement uptime
-- Make the Port like this :8080, and make the PID and Port both monospaced like the command text
+- Use Tailscale for this use case
+    - Make the Port like this :8080, and make the PID and Port both monospaced like the command text

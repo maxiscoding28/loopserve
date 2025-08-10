@@ -4,6 +4,7 @@
       "name": "dunbar",
       "port": 8080,
       "command": "/Users/max/Code/dunbar/dunbar",
+      "pid": 49786,
       "log_file": "logs/dunbar.log"
     }
   ]
